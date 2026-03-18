@@ -131,7 +131,7 @@ const Sidebar = ({ currentPage, setPage }: { currentPage: Page, setPage: (p: Pag
 
 // --- Pages ---
 
-const HomePage = ({ setPage }: { setPage: (p: Page) => void }) => (
+const HomePage: React.FC<{ setPage: (p: Page) => void }> = ({ setPage }) => (
   <motion.div 
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
@@ -499,7 +499,7 @@ const CalculatorPowerRoot = () => {
   );
 };
 
-const ExercisesPage = ({ addXP, saveResult }: { addXP: (xp: number) => void, saveResult: (title: string, category: string, xpEarned: number, accuracy: number, timeSpentSeconds: number) => Promise<void> }) => {
+const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title: string, category: string, xpEarned: number, accuracy: number, timeSpentSeconds: number) => Promise<void> }> = ({ addXP, saveResult }) => {
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [startTime] = useState(() => Date.now());
@@ -686,11 +686,11 @@ const ExercisesPage = ({ addXP, saveResult }: { addXP: (xp: number) => void, sav
   );
 };
 
-const ProfilePage = ({ level, xp, badges, history, weeklyActivity, profile, onSignOut }: { 
+const ProfilePage: React.FC<{ 
   level: number, xp: number, badges: Badge[], history: HistoryItem[], 
   weeklyActivity: WeeklyActivity[], profile: { display_name: string, avatar_url: string | null, location: string | null, title: string, global_ranking: number, streak_days: number, is_pro: boolean } | null,
   onSignOut: () => void
-}) => (
+}> = ({ level, xp, badges, history, weeklyActivity, profile, onSignOut }) => (
   <motion.div 
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
