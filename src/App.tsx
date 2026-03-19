@@ -1207,18 +1207,27 @@ const ProfilePage: React.FC<{
             <h2 className="font-headline text-xl font-bold text-on-background">Galeria de Medalhas</h2>
             <button className="font-label text-xs text-tertiary uppercase tracking-widest hover:underline">Ver todas</button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-            {badges.map((badge) => (
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+            {Array.from({ length: Math.max(50, badges.length) }).map((_, index) => {
+              const badge = badges[index] || {
+                id: `dummy-${index}`,
+                name: `Medalha ${index + 1}`,
+                description: 'Bloqueado',
+                icon_name: 'Trophy',
+                unlocked: false,
+                color: 'text-outline'
+              };
+              return (
               <div key={badge.id} className={`group flex flex-col items-center p-4 rounded-xl bg-surface-container-low hover:bg-surface-container-highest transition-colors text-center ${!badge.unlocked && 'opacity-40 grayscale'}`}>
                 <div className={`w-16 h-16 rounded-full p-0.5 mb-3 transition-transform ${badge.unlocked ? 'bg-gradient-to-tr from-primary to-tertiary group-hover:scale-110' : 'bg-outline-variant/30'}`}>
                   <div className="w-full h-full rounded-full bg-surface-container-highest flex items-center justify-center">
                     <span className={badge.color}>{resolveIcon(badge.icon_name)}</span>
                   </div>
                 </div>
-                <span className="font-label text-[10px] font-bold text-on-background uppercase tracking-tighter">{badge.name}</span>
-                <span className="font-label text-[8px] text-outline uppercase">{badge.description}</span>
+                <span className="font-label text-[10px] font-bold text-on-background uppercase tracking-tighter truncate w-full">{badge.name}</span>
+                <span className="font-label text-[8px] text-outline uppercase truncate w-full">{badge.description}</span>
               </div>
-            ))}
+            )})}
           </div>
         </div>
 
