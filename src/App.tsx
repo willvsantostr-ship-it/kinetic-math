@@ -61,7 +61,7 @@ const calculateMultiLcm = (nums: number[]) => nums.reduce((acc, n) => lcm(acc, n
 
 // --- Components ---
 
-const Navbar = ({ currentPage, setPage, level, xp }: { currentPage: Page, setPage: (p: Page) => void, level: number, xp: number }) => (
+const Navbar = ({ currentPage, setPage, level, xp, userName }: { currentPage: Page, setPage: (p: Page) => void, level: number, xp: number, userName?: string }) => (
   <nav className="fixed top-0 z-50 w-full bg-gradient-to-b from-[#1B0739] to-[#150330] shadow-[0_20px_40px_rgba(0,0,0,0.4)] border-b border-outline-variant/10">
     <div className="max-w-7xl mx-auto px-8 py-4 flex justify-between items-center">
       <div className="text-2xl font-headline font-bold text-primary tracking-tighter cursor-pointer" onClick={() => setPage('home')}>
@@ -90,7 +90,7 @@ const Navbar = ({ currentPage, setPage, level, xp }: { currentPage: Page, setPag
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 bg-surface-container-high px-3 py-1.5 rounded-full border border-outline-variant/15">
           <Award className="text-primary" size={18} />
-          <span className="font-label text-xs font-bold uppercase tracking-wider text-primary">Nível {level}</span>
+          <span className="font-label text-xs font-bold uppercase tracking-wider text-primary">Nível {level} {userName ? `— ${userName}` : ''}</span>
         </div>
         <button className="text-on-background opacity-70 hover:text-tertiary transition-colors">
           <Bell size={20} />
@@ -679,16 +679,20 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
                 <div className="absolute top-3 right-3 opacity-10 group-hover:opacity-20 transition-opacity">
                   <Star size={40} />
                 </div>
-                <div className="relative z-10">
-                  <div className={`font-headline text-3xl font-black ${colors.text} mb-1`}>
-                    {level}
+                <div className="relative z-10 flex flex-col h-full justify-between">
+                  <div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className={`font-headline text-3xl font-black ${colors.text}`}>
+                        {level}
+                      </span>
+                      <h3 className="font-headline text-sm font-bold text-on-background leading-tight">
+                        {getLevelName(level)}
+                      </h3>
+                    </div>
+                    <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                      {getLevelDescription(level)}
+                    </p>
                   </div>
-                  <h3 className="font-headline text-sm font-bold text-on-background mb-2">
-                    {getLevelName(level)}
-                  </h3>
-                  <p className="text-[10px] text-on-surface-variant leading-relaxed">
-                    {getLevelDescription(level)}
-                  </p>
                   <div className="mt-3 flex items-center gap-2">
                     <span className={`font-label text-[10px] font-bold uppercase tracking-widest ${colors.text}`}>
                       {level <= 5 ? '50 sessões' : '5 sessões'} • 10 exercícios
@@ -821,19 +825,9 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
             </div>
             <h2 className="font-headline text-2xl font-bold">Exercícios de Matemática</h2>
           </div>
-          <div className="text-right flex items-center justify-end gap-6">
-            <div className="flex flex-col items-end">
-              <div className="flex items-center gap-2">
-                <Timer size={20} className={timeLeft <= 10 ? 'text-red-400 animate-pulse' : 'text-outline'} />
-                <span className={`font-headline text-3xl font-bold ${timeLeft <= 10 ? 'text-red-400 animate-pulse' : 'text-on-background'}`}>{timeLeft}s</span>
-              </div>
-              <span className="font-label text-[10px] uppercase tracking-widest text-outline mt-1">Tempo Restante</span>
-            </div>
-            <div className="h-10 w-px bg-outline-variant/30"></div>
-            <div className="flex flex-col items-end">
-              <span className="font-headline text-3xl font-bold text-tertiary">{sessionXP}</span>
-              <span className="font-label text-[10px] uppercase tracking-widest text-outline mt-1">XP da Sessão</span>
-            </div>
+          <div className="text-right">
+            <span className="font-headline text-3xl font-bold text-tertiary">{sessionXP}</span>
+            <span className="font-label text-xs uppercase tracking-widest text-outline ml-1">XP da sessão</span>
           </div>
         </div>
         <div className="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
@@ -844,10 +838,16 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-7 space-y-8">
           <div className="bg-surface-container rounded-[2rem] p-8 border-l-4 border-tertiary shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-5">
-              <Calculator size={80} />
+            <div className="absolute top-0 right-0 p-4 flex flex-col items-end gap-4 z-0">
+              <div className="opacity-5">
+                <Calculator size={80} />
+              </div>
+              <div className="flex flex-col items-center mr-6 opacity-100">
+                <Timer size={24} className={timeLeft <= 10 ? 'text-error animate-pulse' : 'text-outline mb-1'} />
+                <span className={`font-headline text-2xl font-bold ${timeLeft <= 10 ? 'text-error animate-pulse' : 'text-on-background'}`}>{timeLeft}s</span>
+              </div>
             </div>
-            <div className="relative z-10">
+            <div className="relative z-10 w-[85%]">
               <div className="flex items-center gap-2 mb-6">
                 <span className="bg-tertiary/20 text-tertiary px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter">Questão {currentQuestion + 1} de {totalBatchQuestions} (#{globalQuestionNumber}/50)</span>
                 <span className="text-outline text-xs">•</span>
@@ -1299,7 +1299,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar currentPage={page} setPage={setPage} level={level} xp={xp} />
+      <Navbar currentPage={page} setPage={setPage} level={level} xp={xp} userName={profile?.display_name || auth.user?.email?.split('@')[0] || 'Aluno'} />
       
       <div className="flex flex-1 pt-20">
         <Sidebar currentPage={page} setPage={setPage} />
