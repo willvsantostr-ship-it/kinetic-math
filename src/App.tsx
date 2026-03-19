@@ -801,6 +801,7 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
   if (!q) return null;
 
   const levelColors = LEVEL_COLORS[selectedLevel];
+  const timerColorClass = timeLeft >= 31 ? 'text-emerald-500' : timeLeft >= 11 ? 'text-amber-500' : 'text-red-500 animate-pulse';
 
   // --- Active Exercise Screen ---
   return (
@@ -843,8 +844,8 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
                 <Calculator size={80} />
               </div>
               <div className="flex flex-col items-center mr-6 opacity-100">
-                <Timer size={24} className={timeLeft <= 10 ? 'text-error animate-pulse' : 'text-outline mb-1'} />
-                <span className={`font-headline text-2xl font-bold ${timeLeft <= 10 ? 'text-error animate-pulse' : 'text-on-background'}`}>{timeLeft}s</span>
+                <Timer size={24} className={`${timerColorClass} mb-1 transition-colors`} />
+                <span className={`font-headline text-2xl font-bold transition-colors ${timerColorClass}`}>{timeLeft}s</span>
               </div>
             </div>
             <div className="relative z-10 w-[85%]">
