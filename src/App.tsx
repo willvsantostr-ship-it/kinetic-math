@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Calculator, 
   Zap, 
@@ -35,6 +35,7 @@ import { useProfile } from './hooks/useProfile';
 import { useExercises } from './hooks/useExercises';
 import { LoginPage } from './components/LoginPage';
 import type { Page, Badge, HistoryItem, WeeklyActivity } from './types';
+import { generateQuestionsForLevel, getLevelName, getLevelDescription, type Question } from './data/questionGenerator';
 
 // --- Icon Resolver ---
 
@@ -499,29 +500,279 @@ const CalculatorPowerRoot = () => {
   );
 };
 
+// --- Flashcard Data ---
+const FLASHCARDS = [
+  { front: 'O que é MMC?', back: 'Mínimo Múltiplo Comum: o menor número positivo que é múltiplo de todos os números dados.' },
+  { front: 'O que é MDC?', back: 'Máximo Divisor Comum: o maior número que divide todos os números dados sem deixar resto.' },
+  { front: 'aⁿ × aᵐ = ?', back: 'aⁿ⁺ᵐ — Multiplica-se mantendo a base e somando os expoentes.' },
+  { front: 'aⁿ ÷ aᵐ = ?', back: 'aⁿ⁻ᵐ — Divide-se mantendo a base e subtraindo os expoentes.' },
+  { front: '(aⁿ)ᵐ = ?', back: 'aⁿˣᵐ — Potência de potência: mantém a base e multiplica os expoentes.' },
+  { front: 'a⁰ = ?', back: '1 — Qualquer número (exceto 0) elevado a zero é igual a 1.' },
+  { front: '√(a × b) = ?', back: '√a × √b — A raiz de um produto é o produto das raízes.' },
+];
+
+const LEVEL_COLORS: Record<number, { bg: string; border: string; text: string; glow: string }> = {
+  1:  { bg: 'from-green-500/20 to-green-600/10', border: 'border-green-500/30', text: 'text-green-400', glow: 'shadow-green-500/20' },
+  2:  { bg: 'from-green-400/20 to-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', glow: 'shadow-emerald-500/20' },
+  3:  { bg: 'from-teal-400/20 to-cyan-500/10', border: 'border-teal-500/30', text: 'text-teal-400', glow: 'shadow-teal-500/20' },
+  4:  { bg: 'from-cyan-400/20 to-blue-500/10', border: 'border-cyan-500/30', text: 'text-cyan-400', glow: 'shadow-cyan-500/20' },
+  5:  { bg: 'from-blue-400/20 to-indigo-500/10', border: 'border-blue-500/30', text: 'text-blue-400', glow: 'shadow-blue-500/20' },
+  6:  { bg: 'from-indigo-400/20 to-violet-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400', glow: 'shadow-indigo-500/20' },
+  7:  { bg: 'from-violet-400/20 to-purple-500/10', border: 'border-violet-500/30', text: 'text-violet-400', glow: 'shadow-violet-500/20' },
+  8:  { bg: 'from-purple-400/20 to-fuchsia-500/10', border: 'border-purple-500/30', text: 'text-purple-400', glow: 'shadow-purple-500/20' },
+  9:  { bg: 'from-fuchsia-400/20 to-pink-500/10', border: 'border-fuchsia-500/30', text: 'text-fuchsia-400', glow: 'shadow-fuchsia-500/20' },
+  10: { bg: 'from-red-400/20 to-orange-500/10', border: 'border-red-500/30', text: 'text-red-400', glow: 'shadow-red-500/20' },
+};
+
+const BATCH_SIZE = 10;
+const TOTAL_BATCHES = 5; // 50 questions / 10 per batch
+
 const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title: string, category: string, xpEarned: number, accuracy: number, timeSpentSeconds: number) => Promise<void> }> = ({ addXP, saveResult }) => {
+  const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
+  const [currentBatch, setCurrentBatch] = useState(0); // 0-4 (5 batches of 10)
+  const [currentQuestion, setCurrentQuestion] = useState(0); // 0-9 within the batch
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
-  const [startTime] = useState(() => Date.now());
+  const [sessionXP, setSessionXP] = useState(0);
+  const [correctCount, setCorrectCount] = useState(0);
+  const [startTime, setStartTime] = useState(() => Date.now());
+  const [finished, setFinished] = useState(false);
+  const [showFlashcards, setShowFlashcards] = useState(false);
+  const [flashcardIndex, setFlashcardIndex] = useState(0);
+  const [flashcardFlipped, setFlashcardFlipped] = useState(false);
+  const [showScratchPad, setShowScratchPad] = useState(false);
+  const [scratchContent, setScratchContent] = useState('');
+
+  // Generate all 50 questions when a level is selected
+  const allQuestions = useMemo<Question[]>(() => {
+    if (selectedLevel === null) return [];
+    return generateQuestionsForLevel(selectedLevel);
+  }, [selectedLevel]);
+
+  // Slice to current batch of 10
+  const batchQuestions = allQuestions.slice(currentBatch * BATCH_SIZE, (currentBatch + 1) * BATCH_SIZE);
+  const q = batchQuestions[currentQuestion];
+  const totalBatchQuestions = batchQuestions.length;
+  const progressPercent = totalBatchQuestions > 0 ? ((currentQuestion + (selectedAnswer !== null ? 1 : 0)) / totalBatchQuestions) * 100 : 0;
+  const globalQuestionNumber = currentBatch * BATCH_SIZE + currentQuestion + 1; // 1-50
 
   const handleAnswer = (index: number) => {
-    if (selectedAnswer !== null) return;
+    if (selectedAnswer !== null || !q) return;
     setSelectedAnswer(index);
     const timeSpent = Math.round((Date.now() - startTime) / 1000);
-    const correct = index === 1; // Correct answer is B (index 1)
-    const xpEarned = correct ? 50 : 0;
+    const correct = index === q.correctIndex;
+    const xpEarned = correct ? q.xpReward : 0;
     const accuracy = correct ? 100 : 0;
-    
+
     if (correct) {
       setIsCorrect(true);
+      setSessionXP(prev => prev + xpEarned);
+      setCorrectCount(prev => prev + 1);
       addXP(xpEarned);
     } else {
       setIsCorrect(false);
     }
-    
-    saveResult('MMC entre 12, 15 e 20', 'mmc-mdc', xpEarned, accuracy, timeSpent);
+
+    saveResult(q.question, q.category, xpEarned, accuracy, timeSpent);
   };
 
+  const handleNextQuestion = () => {
+    if (selectedAnswer === null) return;
+    if (currentQuestion >= totalBatchQuestions - 1) {
+      setFinished(true);
+      return;
+    }
+    setCurrentQuestion(prev => prev + 1);
+    setSelectedAnswer(null);
+    setIsCorrect(null);
+    setStartTime(Date.now());
+  };
+
+  const handleSelectLevel = (level: number) => {
+    setSelectedLevel(level);
+    setCurrentBatch(0);
+    setCurrentQuestion(0);
+    setSelectedAnswer(null);
+    setIsCorrect(null);
+    setSessionXP(0);
+    setCorrectCount(0);
+    setStartTime(Date.now());
+    setFinished(false);
+  };
+
+  const handleBackToLevels = () => {
+    setSelectedLevel(null);
+    setCurrentBatch(0);
+    setCurrentQuestion(0);
+    setSelectedAnswer(null);
+    setIsCorrect(null);
+    setSessionXP(0);
+    setCorrectCount(0);
+    setFinished(false);
+  };
+
+  const handleRestart = () => {
+    setCurrentQuestion(0);
+    setSelectedAnswer(null);
+    setIsCorrect(null);
+    setSessionXP(0);
+    setCorrectCount(0);
+    setStartTime(Date.now());
+    setFinished(false);
+  };
+
+  const handleNextBatch = () => {
+    if (currentBatch >= TOTAL_BATCHES - 1) return;
+    setCurrentBatch(prev => prev + 1);
+    setCurrentQuestion(0);
+    setSelectedAnswer(null);
+    setIsCorrect(null);
+    setSessionXP(0);
+    setCorrectCount(0);
+    setStartTime(Date.now());
+    setFinished(false);
+  };
+
+  // --- Level Selector Screen ---
+  if (selectedLevel === null) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-10">
+        <header>
+          <h1 className="font-headline text-4xl md:text-5xl font-bold text-on-background tracking-tight mb-4">
+            Escolha seu <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-tertiary">Nível</span>
+          </h1>
+          <p className="text-on-surface-variant text-lg max-w-2xl">
+            Cada nível possui 50 exercícios divididos em 5 sessões de 10. Quanto maior o nível, maior a complexidade e o XP ganho.
+          </p>
+        </header>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          {Array.from({ length: 10 }, (_, i) => i + 1).map(level => {
+            const colors = LEVEL_COLORS[level];
+            return (
+              <motion.button
+                key={level}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleSelectLevel(level)}
+                className={`relative overflow-hidden text-left p-6 rounded-2xl border ${colors.border} bg-gradient-to-br ${colors.bg} backdrop-blur-sm hover:shadow-xl ${colors.glow} transition-all group`}
+              >
+                <div className="absolute top-3 right-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                  <Star size={40} />
+                </div>
+                <div className="relative z-10">
+                  <div className={`font-headline text-3xl font-black ${colors.text} mb-1`}>
+                    {level}
+                  </div>
+                  <h3 className="font-headline text-sm font-bold text-on-background mb-2">
+                    {getLevelName(level)}
+                  </h3>
+                  <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                    {getLevelDescription(level)}
+                  </p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className={`font-label text-[10px] font-bold uppercase tracking-widest ${colors.text}`}>
+                      5 sessões • 10 exercícios
+                    </span>
+                  </div>
+                </div>
+              </motion.button>
+            );
+          })}
+        </div>
+      </motion.div>
+    );
+  }
+
+  // --- Completion Screen (batch finished) ---
+  if (finished) {
+    const accuracyRate = totalBatchQuestions > 0 ? Math.round((correctCount / totalBatchQuestions) * 100) : 0;
+    const colors = LEVEL_COLORS[selectedLevel];
+    const isLastBatch = currentBatch >= TOTAL_BATCHES - 1;
+    const batchLabel = `Sessão ${currentBatch + 1} de ${TOTAL_BATCHES}`;
+    return (
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-12">
+        <div className="bg-surface-container rounded-[2rem] p-12 text-center border border-outline-variant/10 shadow-2xl">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center mx-auto mb-8">
+            <Trophy className="text-surface" size={48} />
+          </div>
+          <h2 className="font-headline text-4xl font-bold text-on-background mb-2">
+            {isLastBatch ? 'Nível Completo! 🎉' : 'Sessão Completa!'}
+          </h2>
+          <p className={`font-label text-sm uppercase tracking-widest ${colors.text} mb-2`}>
+            Nível {selectedLevel} — {getLevelName(selectedLevel)}
+          </p>
+          <p className="text-on-surface-variant text-sm mb-6">{batchLabel}</p>
+
+          {/* Batch dots indicator */}
+          <div className="flex justify-center gap-2 mb-8">
+            {Array.from({ length: TOTAL_BATCHES }, (_, i) => (
+              <div
+                key={i}
+                className={`w-3 h-3 rounded-full transition-all ${
+                  i < currentBatch ? 'bg-tertiary' 
+                  : i === currentBatch ? 'bg-primary scale-125 ring-2 ring-primary/30' 
+                  : 'bg-surface-container-highest'
+                }`}
+              />
+            ))}
+          </div>
+
+          <p className="text-on-surface-variant text-lg mb-8">
+            Você terminou {totalBatchQuestions} questões desta sessão.
+            {!isLastBatch && ` Restam ${(TOTAL_BATCHES - currentBatch - 1) * BATCH_SIZE} questões neste nível.`}
+          </p>
+          <div className="grid grid-cols-3 gap-6 max-w-md mx-auto mb-10">
+            <div className="bg-surface-container-high p-4 rounded-2xl">
+              <p className="font-headline text-2xl font-bold text-tertiary">{sessionXP}</p>
+              <p className="font-label text-[10px] uppercase text-outline tracking-widest">XP Ganho</p>
+            </div>
+            <div className="bg-surface-container-high p-4 rounded-2xl">
+              <p className="font-headline text-2xl font-bold text-primary">{correctCount}/{totalBatchQuestions}</p>
+              <p className="font-label text-[10px] uppercase text-outline tracking-widest">Acertos</p>
+            </div>
+            <div className="bg-surface-container-high p-4 rounded-2xl">
+              <p className="font-headline text-2xl font-bold text-on-background">{accuracyRate}%</p>
+              <p className="font-label text-[10px] uppercase text-outline tracking-widest">Precisão</p>
+            </div>
+          </div>
+          <div className="flex justify-center gap-4 flex-wrap">
+            {!isLastBatch && (
+              <button
+                onClick={handleNextBatch}
+                className="bg-gradient-to-r from-primary to-tertiary text-surface font-headline font-bold px-10 py-4 rounded-xl transition-transform active:scale-95 shadow-lg shadow-primary/20 hover:shadow-[0_0_30px_rgba(129,236,255,0.4)]"
+              >
+                Próxima Sessão →
+              </button>
+            )}
+            <button
+              onClick={handleRestart}
+              className={`font-headline font-bold px-8 py-4 rounded-xl transition-all active:scale-95 ${
+                isLastBatch 
+                  ? 'bg-gradient-to-r from-primary to-tertiary text-surface shadow-lg shadow-primary/20 hover:shadow-[0_0_30px_rgba(129,236,255,0.4)]'
+                  : 'border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-high'
+              }`}
+            >
+              <RotateCcw className="inline mr-2" size={18} />
+              Repetir Sessão
+            </button>
+            <button
+              onClick={handleBackToLevels}
+              className="border border-outline-variant/20 text-on-surface-variant font-headline font-bold px-8 py-4 rounded-xl hover:bg-surface-container-high transition-all"
+            >
+              Escolher Outro Nível
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (!q) return null;
+
+  const levelColors = LEVEL_COLORS[selectedLevel];
+
+  // --- Active Exercise Screen ---
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
@@ -531,16 +782,26 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
       <section>
         <div className="flex justify-between items-end mb-4">
           <div>
-            <span className="font-label text-xs uppercase tracking-widest text-tertiary">Progresso da Sessão</span>
-            <h2 className="font-headline text-2xl font-bold">Mínimo Múltiplo Comum</h2>
+            <div className="flex items-center gap-3 mb-2">
+              <button
+                onClick={handleBackToLevels}
+                className="text-outline hover:text-on-background transition-colors font-label text-xs uppercase tracking-widest flex items-center gap-1"
+              >
+                ← Níveis
+              </button>
+              <span className={`font-label text-xs font-bold uppercase tracking-widest ${levelColors.text}`}>
+                Nível {selectedLevel} — {getLevelName(selectedLevel)} • Sessão {currentBatch + 1}/{TOTAL_BATCHES}
+              </span>
+            </div>
+            <h2 className="font-headline text-2xl font-bold">Exercícios de Matemática</h2>
           </div>
           <div className="text-right">
-            <span className="font-headline text-3xl font-bold text-tertiary">850</span>
-            <span className="font-label text-xs uppercase tracking-widest text-outline ml-1">XP total</span>
+            <span className="font-headline text-3xl font-bold text-tertiary">{sessionXP}</span>
+            <span className="font-label text-xs uppercase tracking-widest text-outline ml-1">XP da sessão</span>
           </div>
         </div>
         <div className="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-primary to-tertiary shadow-[0_0_15px_rgba(129,236,255,0.5)] w-3/4 transition-all duration-1000"></div>
+          <div className="h-full bg-gradient-to-r from-primary to-tertiary shadow-[0_0_15px_rgba(129,236,255,0.5)] transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
         </div>
       </section>
 
@@ -552,116 +813,90 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
             </div>
             <div className="relative z-10">
               <div className="flex items-center gap-2 mb-6">
-                <span className="bg-tertiary/20 text-tertiary px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter">Questão 4 de 10</span>
+                <span className="bg-tertiary/20 text-tertiary px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter">Questão {currentQuestion + 1} de {totalBatchQuestions} (#{globalQuestionNumber}/50)</span>
                 <span className="text-outline text-xs">•</span>
-                <span className="text-outline text-xs font-label uppercase">Nível Médio</span>
+                <span className={`text-xs font-label uppercase ${levelColors.text}`}>Nível {q.level}</span>
               </div>
               <h3 className="font-body text-xl text-on-background mb-8 leading-relaxed">
-                Determine o <span className="text-primary font-bold">MMC</span> entre os números 12, 15 e 20. Demonstre o raciocínio utilizando a decomposição simultânea.
+                {q.question}
               </h3>
               
               <div className="space-y-4">
-                {['A) 30', 'B) 60', 'C) 120', 'D) 150'].map((opt, i) => (
+                {q.options.map((opt, i) => (
                   <button 
                     key={i}
                     onClick={() => handleAnswer(i)}
+                    disabled={selectedAnswer !== null}
                     className={`w-full text-left p-4 rounded-xl border transition-all flex justify-between items-center ${
-                      selectedAnswer === i 
-                        ? (i === 1 ? 'bg-tertiary/10 border-tertiary' : 'bg-error/10 border-error')
-                        : 'border-outline-variant/15 hover:border-tertiary/40 hover:bg-surface-container-high'
+                      selectedAnswer !== null && i === q.correctIndex
+                        ? 'bg-tertiary/10 border-tertiary'
+                        : selectedAnswer === i && i !== q.correctIndex
+                          ? 'bg-error/10 border-error'
+                          : selectedAnswer !== null
+                            ? 'border-outline-variant/15 opacity-50'
+                            : 'border-outline-variant/15 hover:border-tertiary/40 hover:bg-surface-container-high cursor-pointer'
                     }`}
                   >
-                    <span className={`font-body ${selectedAnswer === i && i === 1 ? 'text-tertiary font-bold' : 'text-on-surface-variant'}`}>{opt}</span>
-                    {selectedAnswer === i && (
+                    <span className={`font-body ${selectedAnswer !== null && i === q.correctIndex ? 'text-tertiary font-bold' : 'text-on-surface-variant'}`}>{opt}</span>
+                    {selectedAnswer !== null && i === q.correctIndex && (
                       <div className="flex items-center gap-2">
-                        {i === 1 ? (
-                          <>
-                            <span className="font-label text-[10px] uppercase font-bold text-tertiary">Correto! +50 XP</span>
-                            <CheckCircle2 className="text-tertiary" size={20} />
-                          </>
-                        ) : (
-                          <span className="font-label text-[10px] uppercase font-bold text-error">Incorreto</span>
-                        )}
+                        <span className="font-label text-[10px] uppercase font-bold text-tertiary">Correto! +{q.xpReward} XP</span>
+                        <CheckCircle2 className="text-tertiary" size={20} />
                       </div>
+                    )}
+                    {selectedAnswer === i && i !== q.correctIndex && (
+                      <span className="font-label text-[10px] uppercase font-bold text-error">Incorreto</span>
                     )}
                   </button>
                 ))}
               </div>
-              <div className="mt-8 flex justify-end">
-                <button className="bg-gradient-to-r from-primary to-tertiary text-surface font-headline font-bold px-8 py-3 rounded-xl transition-transform active:scale-95 shadow-lg shadow-primary/20">
-                  Próxima Questão
-                </button>
-              </div>
-            </div>
-          </div>
 
-          <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 overflow-hidden">
-            <button className="w-full flex items-center justify-between p-6 hover:bg-surface-container-high transition-colors">
-              <div className="flex items-center gap-4">
-                <Info className="text-primary" size={20} />
-                <span className="font-headline font-medium text-on-background">Resumo: Propriedades do MMC</span>
-              </div>
-              <ChevronRight className="text-outline rotate-90" size={20} />
-            </button>
-            <div className="px-6 pb-6 pt-2">
-              <div className="bg-surface-container-lowest p-6 rounded-xl border-l-2 border-primary/40">
-                <p className="text-on-surface-variant text-sm leading-relaxed mb-4">
-                  O Mínimo Múltiplo Comum (MMC) de dois ou mais números é o menor número positivo, diferente de zero, que é múltiplo comum de todos eles.
-                </p>
-                <ul className="space-y-2 text-sm text-on-surface-variant">
-                  <li className="flex items-start gap-2">
-                    <span className="text-tertiary font-bold">•</span>
-                    <span>MMC entre primos entre si é o produto deles.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-tertiary font-bold">•</span>
-                    <span>Se um número é múltiplo do outro, o MMC é o maior deles.</span>
-                  </li>
-                </ul>
+              {/* Explanation after answering */}
+              {selectedAnswer !== null && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-6 p-4 bg-surface-container-highest/30 rounded-xl border-l-2 border-primary/40"
+                >
+                  <p className="text-sm text-on-surface-variant">
+                    <span className="text-primary font-bold">Explicação: </span>{q.explanation}
+                  </p>
+                </motion.div>
+              )}
+
+              <div className="mt-8 flex justify-end">
+                <button 
+                  onClick={handleNextQuestion}
+                  disabled={selectedAnswer === null}
+                  className={`bg-gradient-to-r from-primary to-tertiary text-surface font-headline font-bold px-8 py-3 rounded-xl transition-all shadow-lg shadow-primary/20 ${
+                    selectedAnswer === null ? 'opacity-40 cursor-not-allowed' : 'hover:shadow-[0_0_20px_rgba(129,236,255,0.4)] active:scale-95'
+                  }`}
+                >
+                  {currentQuestion >= totalBatchQuestions - 1 ? 'Finalizar Sessão' : 'Próxima Questão'}
+                </button>
               </div>
             </div>
           </div>
         </div>
 
         <div className="lg:col-span-5 space-y-6">
-          <div className="bg-surface-container-high rounded-[2rem] overflow-hidden shadow-2xl">
-            <div className="relative aspect-video group cursor-pointer">
-              <img 
-                className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" 
-                src="https://picsum.photos/seed/math/800/450" 
-                alt="Video thumbnail"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-16 h-16 bg-tertiary rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(129,236,255,0.6)] group-hover:scale-110 transition-transform">
-                  <Play className="text-surface fill-surface" size={32} />
-                </div>
-              </div>
-              <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-surface-container-lowest to-transparent">
-                <p className="font-label text-[10px] uppercase tracking-widest text-tertiary font-bold">Vídeo Aula</p>
-                <h4 className="font-headline text-sm font-medium">Dominando o MMC em 5 minutos</h4>
-              </div>
-            </div>
-            <div className="p-4 flex justify-between items-center bg-surface-container-highest">
-              <span className="text-[10px] font-label text-outline uppercase tracking-tighter">Professor Ricardo Silva</span>
-              <div className="flex gap-2">
-                <button className="text-outline hover:text-on-background transition-colors"><Download size={16} /></button>
-                <button className="text-outline hover:text-on-background transition-colors"><Share2 size={16} /></button>
-              </div>
-            </div>
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-surface-container p-4 rounded-[2rem] border border-outline-variant/10 hover:bg-surface-container-high transition-colors cursor-pointer group">
-              <LayoutDashboard className="text-primary mb-3" size={24} />
+            <button 
+              onClick={() => { setShowFlashcards(true); setFlashcardIndex(0); setFlashcardFlipped(false); }}
+              className="bg-surface-container p-4 rounded-[2rem] border border-outline-variant/10 hover:bg-surface-container-high hover:border-primary/30 transition-all cursor-pointer group text-left"
+            >
+              <LayoutDashboard className="text-primary mb-3 group-hover:scale-110 transition-transform" size={24} />
               <h5 className="text-xs font-headline font-bold mb-1">Flashcards</h5>
               <p className="text-[10px] text-outline">Memorize as regras rápidas</p>
-            </div>
-            <div className="bg-surface-container p-4 rounded-[2rem] border border-outline-variant/10 hover:bg-surface-container-high transition-colors cursor-pointer group">
-              <FunctionIcon className="text-tertiary mb-3" size={24} />
+            </button>
+            <button 
+              onClick={() => setShowScratchPad(true)}
+              className="bg-surface-container p-4 rounded-[2rem] border border-outline-variant/10 hover:bg-surface-container-high hover:border-tertiary/30 transition-all cursor-pointer group text-left"
+            >
+              <FunctionIcon className="text-tertiary mb-3 group-hover:scale-110 transition-transform" size={24} />
               <h5 className="text-xs font-headline font-bold mb-1">Rascunho</h5>
               <p className="text-[10px] text-outline">Área livre para cálculos</p>
-            </div>
+            </button>
           </div>
 
           <div className="glass-panel p-6 rounded-[2rem] border-l-2 border-primary relative overflow-hidden">
@@ -670,18 +905,160 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
                 <Trophy className="text-primary" size={24} />
               </div>
               <div>
-                <h4 className="font-headline text-sm font-bold">Desafio Diário</h4>
-                <p className="text-xs text-on-surface-variant">Acerte 3 seguidas para bônus 2x</p>
+                <h4 className="font-headline text-sm font-bold">Progresso da Sessão</h4>
+                <p className="text-xs text-on-surface-variant">{correctCount} acertos de {currentQuestion + (selectedAnswer !== null ? 1 : 0)} respondidas</p>
               </div>
             </div>
-            <div className="mt-4 flex gap-2">
-              <div className="h-1 flex-1 bg-primary rounded-full"></div>
-              <div className="h-1 flex-1 bg-primary rounded-full"></div>
-              <div className="h-1 flex-1 bg-surface-container-highest rounded-full"></div>
+            <div className="mt-4 flex gap-1">
+              {Array.from({ length: totalBatchQuestions }, (_, i) => {
+                const answered = i < currentQuestion || (i === currentQuestion && selectedAnswer !== null);
+                return (
+                  <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${answered ? 'bg-primary' : 'bg-surface-container-highest'}`}></div>
+                );
+              })}
+            </div>
+            {/* Batch indicator */}
+            <div className="mt-3 flex items-center justify-between">
+              <span className="text-[10px] text-outline uppercase tracking-widest">Sessão {currentBatch + 1} de {TOTAL_BATCHES}</span>
+              <div className="flex gap-1">
+                {Array.from({ length: TOTAL_BATCHES }, (_, i) => (
+                  <div key={i} className={`w-2 h-2 rounded-full ${
+                    i < currentBatch ? 'bg-tertiary' 
+                    : i === currentBatch ? 'bg-primary' 
+                    : 'bg-surface-container-highest'
+                  }`} />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className={`p-6 rounded-[2rem] border ${levelColors.border} bg-gradient-to-br ${levelColors.bg} relative overflow-hidden`}>
+            <div className="flex gap-4 items-center">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center font-headline text-xl font-black ${levelColors.text}`}>
+                {selectedLevel}
+              </div>
+              <div>
+                <h4 className="font-headline text-sm font-bold">{getLevelName(selectedLevel)}</h4>
+                <p className="text-xs text-on-surface-variant">{getLevelDescription(selectedLevel)}</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Flashcard Modal */}
+      <AnimatePresence>
+        {showFlashcards && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowFlashcards(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-surface-container rounded-[2rem] p-8 max-w-lg w-full shadow-2xl border border-outline-variant/10"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-headline text-xl font-bold">Flashcards</h3>
+                <span className="font-label text-xs text-outline uppercase tracking-widest">{flashcardIndex + 1} / {FLASHCARDS.length}</span>
+              </div>
+
+              <button 
+                onClick={() => setFlashcardFlipped(prev => !prev)} 
+                className="w-full min-h-[200px] bg-surface-container-high rounded-2xl p-8 border border-outline-variant/15 hover:border-tertiary/30 transition-all cursor-pointer flex items-center justify-center text-center"
+              >
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={flashcardFlipped ? 'back' : 'front'}
+                    initial={{ rotateY: 90, opacity: 0 }}
+                    animate={{ rotateY: 0, opacity: 1 }}
+                    exit={{ rotateY: -90, opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                  >
+                    {flashcardFlipped ? (
+                      <p className="font-body text-on-surface-variant text-base leading-relaxed">{FLASHCARDS[flashcardIndex].back}</p>
+                    ) : (
+                      <p className="font-headline text-xl font-bold text-on-background">{FLASHCARDS[flashcardIndex].front}</p>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </button>
+              <p className="text-center text-[10px] text-outline mt-3 uppercase tracking-widest">Clique para {flashcardFlipped ? 'ver pergunta' : 'ver resposta'}</p>
+
+              <div className="flex justify-between mt-6">
+                <button 
+                  onClick={() => { setFlashcardIndex(prev => Math.max(0, prev - 1)); setFlashcardFlipped(false); }}
+                  disabled={flashcardIndex === 0}
+                  className={`px-6 py-2 rounded-xl font-label text-sm font-bold uppercase ${flashcardIndex === 0 ? 'text-outline/40 cursor-not-allowed' : 'text-primary hover:bg-primary/10 transition-colors'}`}
+                >
+                  Anterior
+                </button>
+                <button 
+                  onClick={() => setShowFlashcards(false)}
+                  className="px-6 py-2 rounded-xl font-label text-sm text-outline hover:text-on-background transition-colors"
+                >
+                  Fechar
+                </button>
+                <button 
+                  onClick={() => { setFlashcardIndex(prev => Math.min(FLASHCARDS.length - 1, prev + 1)); setFlashcardFlipped(false); }}
+                  disabled={flashcardIndex === FLASHCARDS.length - 1}
+                  className={`px-6 py-2 rounded-xl font-label text-sm font-bold uppercase ${flashcardIndex === FLASHCARDS.length - 1 ? 'text-outline/40 cursor-not-allowed' : 'text-tertiary hover:bg-tertiary/10 transition-colors'}`}
+                >
+                  Próximo
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Scratch Pad Modal */}
+      <AnimatePresence>
+        {showScratchPad && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowScratchPad(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-surface-container rounded-[2rem] p-8 max-w-lg w-full shadow-2xl border border-outline-variant/10"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-headline text-xl font-bold flex items-center gap-2">
+                  <FunctionIcon className="text-tertiary" size={20} />
+                  Rascunho
+                </h3>
+                <button onClick={() => setScratchContent('')} className="text-outline hover:text-on-background transition-colors font-label text-xs uppercase tracking-widest">Limpar</button>
+              </div>
+              <textarea
+                value={scratchContent}
+                onChange={e => setScratchContent(e.target.value)}
+                placeholder="Use este espaço para fazer cálculos, anotações, decomposições..."
+                className="w-full h-64 bg-surface-container-lowest rounded-2xl p-6 text-on-background font-mono text-sm resize-none border border-outline-variant/15 focus:border-tertiary/40 focus:ring-2 focus:ring-tertiary/20 outline-none placeholder:text-outline/30 leading-relaxed"
+              />
+              <div className="flex justify-end mt-4">
+                <button 
+                  onClick={() => setShowScratchPad(false)}
+                  className="bg-gradient-to-r from-primary to-tertiary text-surface font-headline font-bold px-6 py-2 rounded-xl transition-transform active:scale-95"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
