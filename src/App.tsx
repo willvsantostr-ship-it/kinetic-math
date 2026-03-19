@@ -525,7 +525,6 @@ const LEVEL_COLORS: Record<number, { bg: string; border: string; text: string; g
 };
 
 const BATCH_SIZE = 10;
-const TOTAL_BATCHES = 5; // 50 questions / 10 per batch
 
 const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title: string, category: string, xpEarned: number, accuracy: number, timeSpentSeconds: number) => Promise<void> }> = ({ addXP, saveResult }) => {
   const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
@@ -543,11 +542,13 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
   const [showScratchPad, setShowScratchPad] = useState(false);
   const [scratchContent, setScratchContent] = useState('');
 
-  // Generate all 50 questions when a level is selected
+  // Generate all questions when a level is selected
   const allQuestions = useMemo<Question[]>(() => {
     if (selectedLevel === null) return [];
     return generateQuestionsForLevel(selectedLevel);
   }, [selectedLevel]);
+
+  const TOTAL_BATCHES = allQuestions.length > 0 ? Math.ceil(allQuestions.length / BATCH_SIZE) : 5;
 
   // Slice to current batch of 10
   const batchQuestions = allQuestions.slice(currentBatch * BATCH_SIZE, (currentBatch + 1) * BATCH_SIZE);
@@ -642,7 +643,7 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
             Escolha seu <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-tertiary">Nível</span>
           </h1>
           <p className="text-on-surface-variant text-lg max-w-2xl">
-            Cada nível possui 50 exercícios divididos em 5 sessões de 10. Quanto maior o nível, maior a complexidade e o XP ganho.
+            Níveis de 1 a 5 possuem 500 exercícios (50 sessões). Níveis de 6 a 10 possuem 50 exercícios (5 sessões). Sessões de 10.
           </p>
         </header>
 
@@ -672,7 +673,7 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
                   </p>
                   <div className="mt-3 flex items-center gap-2">
                     <span className={`font-label text-[10px] font-bold uppercase tracking-widest ${colors.text}`}>
-                      5 sessões • 10 exercícios
+                      {level <= 5 ? '50 sessões' : '5 sessões'} • 10 exercícios
                     </span>
                   </div>
                 </div>
@@ -687,6 +688,9 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
   // --- Completion Screen (batch finished) ---
   if (finished) {
     const accuracyRate = totalBatchQuestions > 0 ? Math.round((correctCount / totalBatchQuestions) * 100) : 0;
+    const grade = totalBatchQuestions > 0 ? ((correctCount / totalBatchQuestions) * 10).toFixed(1) : '0.0';
+    const parsedGrade = parseFloat(grade);
+    const gradeColor = parsedGrade >= 9 ? 'text-green-400' : parsedGrade >= 7 ? 'text-tertiary' : parsedGrade >= 5 ? 'text-primary' : 'text-red-400';
     const colors = LEVEL_COLORS[selectedLevel];
     const isLastBatch = currentBatch >= TOTAL_BATCHES - 1;
     const batchLabel = `Sessão ${currentBatch + 1} de ${TOTAL_BATCHES}`;
@@ -705,7 +709,7 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
           <p className="text-on-surface-variant text-sm mb-6">{batchLabel}</p>
 
           {/* Batch dots indicator */}
-          <div className="flex justify-center gap-2 mb-8">
+          <div className="flex justify-center flex-wrap gap-2 mb-8">
             {Array.from({ length: TOTAL_BATCHES }, (_, i) => (
               <div
                 key={i}
@@ -722,18 +726,22 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
             Você terminou {totalBatchQuestions} questões desta sessão.
             {!isLastBatch && ` Restam ${(TOTAL_BATCHES - currentBatch - 1) * BATCH_SIZE} questões neste nível.`}
           </p>
-          <div className="grid grid-cols-3 gap-6 max-w-md mx-auto mb-10">
-            <div className="bg-surface-container-high p-4 rounded-2xl">
-              <p className="font-headline text-2xl font-bold text-tertiary">{sessionXP}</p>
-              <p className="font-label text-[10px] uppercase text-outline tracking-widest">XP Ganho</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto mb-10">
+            <div className="bg-surface-container-high p-4 rounded-2xl flex flex-col items-center justify-center">
+              <p className={`font-headline text-3xl font-bold ${gradeColor}`}>{grade.replace('.0', '')}</p>
+              <p className="font-label text-[10px] uppercase text-outline tracking-widest mt-1">Nota</p>
             </div>
-            <div className="bg-surface-container-high p-4 rounded-2xl">
-              <p className="font-headline text-2xl font-bold text-primary">{correctCount}/{totalBatchQuestions}</p>
-              <p className="font-label text-[10px] uppercase text-outline tracking-widest">Acertos</p>
+            <div className="bg-surface-container-high p-4 rounded-2xl flex flex-col items-center justify-center">
+              <p className="font-headline text-3xl font-bold text-tertiary">{sessionXP}</p>
+              <p className="font-label text-[10px] uppercase text-outline tracking-widest mt-1">XP Ganho</p>
             </div>
-            <div className="bg-surface-container-high p-4 rounded-2xl">
-              <p className="font-headline text-2xl font-bold text-on-background">{accuracyRate}%</p>
-              <p className="font-label text-[10px] uppercase text-outline tracking-widest">Precisão</p>
+            <div className="bg-surface-container-high p-4 rounded-2xl flex flex-col items-center justify-center">
+              <p className="font-headline text-3xl font-bold text-primary">{correctCount}/{totalBatchQuestions}</p>
+              <p className="font-label text-[10px] uppercase text-outline tracking-widest mt-1">Acertos</p>
+            </div>
+            <div className="bg-surface-container-high p-4 rounded-2xl flex flex-col items-center justify-center">
+              <p className="font-headline text-3xl font-bold text-on-background">{accuracyRate}%</p>
+              <p className="font-label text-[10px] uppercase text-outline tracking-widest mt-1">Precisão</p>
             </div>
           </div>
           <div className="flex justify-center gap-4 flex-wrap">
@@ -920,7 +928,7 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
             {/* Batch indicator */}
             <div className="mt-3 flex items-center justify-between">
               <span className="text-[10px] text-outline uppercase tracking-widest">Sessão {currentBatch + 1} de {TOTAL_BATCHES}</span>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {Array.from({ length: TOTAL_BATCHES }, (_, i) => (
                   <div key={i} className={`w-2 h-2 rounded-full ${
                     i < currentBatch ? 'bg-tertiary' 

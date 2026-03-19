@@ -642,7 +642,8 @@ export function generateQuestionsForLevel(level: number): Question[] {
   const gen = GENERATORS[level];
   if (!gen) return [];
   const questions: Question[] = [];
-  for (let i = 0; i < 50; i++) {
+  const amount = level <= 5 ? 500 : 50;
+  for (let i = 0; i < amount; i++) {
     questions.push(gen(i + 1));
   }
   return questions;
