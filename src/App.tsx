@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Calculator, 
   Zap, 
@@ -27,12 +27,14 @@ import {
   BookMarked,
   BrainCircuit,
   Timer,
-  LogOut
+  LogOut,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './hooks/useAuth';
 import { useProfile } from './hooks/useProfile';
 import { useExercises } from './hooks/useExercises';
+import { useSettings } from './hooks/useSettings';
 import { LoginPage } from './components/LoginPage';
 import type { Page, Badge, HistoryItem, WeeklyActivity } from './types';
 import { generateQuestionsForLevel, getLevelName, getLevelDescription, type Question } from './data/questionGenerator';
@@ -526,7 +528,7 @@ const LEVEL_COLORS: Record<number, { bg: string; border: string; text: string; g
 
 const BATCH_SIZE = 10;
 
-const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title: string, category: string, xpEarned: number, accuracy: number, timeSpentSeconds: number) => Promise<void> }> = ({ addXP, saveResult }) => {
+const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title: string, category: string, xpEarned: number, accuracy: number, timeSpentSeconds: number) => Promise<void>, exerciseTimer: number }> = ({ addXP, saveResult, exerciseTimer }) => {
   const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
   const [currentBatch, setCurrentBatch] = useState(0); // 0-4 (5 batches of 10)
   const [currentQuestion, setCurrentQuestion] = useState(0); // 0-9 within the batch
@@ -541,6 +543,18 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
   const [flashcardFlipped, setFlashcardFlipped] = useState(false);
   const [showScratchPad, setShowScratchPad] = useState(false);
   const [scratchContent, setScratchContent] = useState('');
+  const [timeLeft, setTimeLeft] = useState(exerciseTimer);
+
+  useEffect(() => {
+    if (selectedLevel !== null && !finished && selectedAnswer === null) {
+      if (timeLeft <= 0) {
+        handleAnswer(-1);
+      } else {
+        const timer = setTimeout(() => setTimeLeft(prev => Math.max(0, prev - 1)), 1000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [timeLeft, selectedLevel, finished, selectedAnswer]);
 
   // Generate all questions when a level is selected
   const allQuestions = useMemo<Question[]>(() => {
@@ -587,6 +601,7 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
     setSelectedAnswer(null);
     setIsCorrect(null);
     setStartTime(Date.now());
+    setTimeLeft(exerciseTimer);
   };
 
   const handleSelectLevel = (level: number) => {
@@ -599,6 +614,7 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
     setCorrectCount(0);
     setStartTime(Date.now());
     setFinished(false);
+    setTimeLeft(exerciseTimer);
   };
 
   const handleBackToLevels = () => {
@@ -620,6 +636,7 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
     setCorrectCount(0);
     setStartTime(Date.now());
     setFinished(false);
+    setTimeLeft(exerciseTimer);
   };
 
   const handleNextBatch = () => {
@@ -632,6 +649,7 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
     setCorrectCount(0);
     setStartTime(Date.now());
     setFinished(false);
+    setTimeLeft(exerciseTimer);
   };
 
   // --- Level Selector Screen ---
@@ -803,9 +821,19 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
             </div>
             <h2 className="font-headline text-2xl font-bold">Exercícios de Matemática</h2>
           </div>
-          <div className="text-right">
-            <span className="font-headline text-3xl font-bold text-tertiary">{sessionXP}</span>
-            <span className="font-label text-xs uppercase tracking-widest text-outline ml-1">XP da sessão</span>
+          <div className="text-right flex items-center justify-end gap-6">
+            <div className="flex flex-col items-end">
+              <div className="flex items-center gap-2">
+                <Timer size={20} className={timeLeft <= 10 ? 'text-red-400 animate-pulse' : 'text-outline'} />
+                <span className={`font-headline text-3xl font-bold ${timeLeft <= 10 ? 'text-red-400 animate-pulse' : 'text-on-background'}`}>{timeLeft}s</span>
+              </div>
+              <span className="font-label text-[10px] uppercase tracking-widest text-outline mt-1">Tempo Restante</span>
+            </div>
+            <div className="h-10 w-px bg-outline-variant/30"></div>
+            <div className="flex flex-col items-end">
+              <span className="font-headline text-3xl font-bold text-tertiary">{sessionXP}</span>
+              <span className="font-label text-[10px] uppercase tracking-widest text-outline mt-1">XP da Sessão</span>
+            </div>
           </div>
         </div>
         <div className="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
@@ -1074,8 +1102,10 @@ const ExercisesPage: React.FC<{ addXP: (xp: number) => void, saveResult: (title:
 const ProfilePage: React.FC<{ 
   level: number, xp: number, badges: Badge[], history: HistoryItem[], 
   weeklyActivity: WeeklyActivity[], profile: { display_name: string, avatar_url: string | null, location: string | null, title: string, global_ranking: number, streak_days: number, is_pro: boolean } | null,
-  onSignOut: () => void
-}> = ({ level, xp, badges, history, weeklyActivity, profile, onSignOut }) => (
+  onSignOut: () => void,
+  exerciseTimer: number,
+  setExerciseTimer: (val: number) => void
+}> = ({ level, xp, badges, history, weeklyActivity, profile, onSignOut, exerciseTimer, setExerciseTimer }) => (
   <motion.div 
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
@@ -1190,6 +1220,31 @@ const ProfilePage: React.FC<{
             ))}
           </div>
         </div>
+
+        <div className="p-8 rounded-[2rem] bg-surface-container border border-outline-variant/10">
+          <div className="flex mb-8 items-center gap-3">
+            <Settings className="text-tertiary" size={24} />
+            <h2 className="font-headline text-xl font-bold text-on-background">Configurações</h2>
+          </div>
+          <div className="space-y-6">
+            <div className="flex flex-col gap-2">
+              <label className="font-label text-xs uppercase tracking-widest text-outline flex justify-between">
+                <span>Tempo por Exercício (segundos)</span>
+                <span className="text-tertiary font-bold">{exerciseTimer}s</span>
+              </label>
+              <input 
+                type="range" 
+                min="10" 
+                max="300" 
+                step="10"
+                value={exerciseTimer}
+                onChange={(e) => setExerciseTimer(parseInt(e.target.value, 10))}
+                className="w-full accent-tertiary"
+              />
+              <p className="text-xs text-on-surface-variant">Define o tempo máximo para responder a cada questão.</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="p-8 rounded-[2rem] bg-surface-container-high border border-outline-variant/10 h-full">
@@ -1226,6 +1281,7 @@ export default function App() {
   const auth = useAuth();
   const { profile, progress, badges, weeklyActivity, addXP } = useProfile(auth.user?.id ?? null);
   const { history, saveResult } = useExercises(auth.user?.id ?? null);
+  const { exerciseTimer, setExerciseTimer } = useSettings();
 
   const xp = progress?.total_xp ?? 0;
   const level = progress?.current_level ?? 1;
@@ -1253,8 +1309,8 @@ export default function App() {
             {page === 'home' && <HomePage key="home" setPage={setPage} />}
             {page === 'mmc-mdc' && <CalculatorMMCMDC key="mmc-mdc" />}
             {page === 'power-root' && <CalculatorPowerRoot key="power-root" />}
-            {page === 'exercises' && <ExercisesPage key="exercises" addXP={addXP} saveResult={saveResult} />}
-            {page === 'profile' && <ProfilePage key="profile" level={level} xp={xp} badges={badges} history={history} weeklyActivity={weeklyActivity} profile={profile} onSignOut={auth.signOut} />}
+            {page === 'exercises' && <ExercisesPage key="exercises" addXP={addXP} saveResult={saveResult} exerciseTimer={exerciseTimer} />}
+            {page === 'profile' && <ProfilePage key="profile" level={level} xp={xp} badges={badges} history={history} weeklyActivity={weeklyActivity} profile={profile} onSignOut={auth.signOut} exerciseTimer={exerciseTimer} setExerciseTimer={setExerciseTimer} />}
           </AnimatePresence>
         </main>
       </div>
