@@ -16,14 +16,25 @@ export interface Question {
 
 // --- Utility Helpers ---
 
+function secureRandom(): number {
+  const array = new Uint32Array(1);
+  const cryptoObj = typeof window !== 'undefined' ? window.crypto : (globalThis as any).crypto;
+  if (!cryptoObj) {
+    // Fallback for environments where crypto is not available (should not happen in modern browsers/Node)
+    return Math.random();
+  }
+  cryptoObj.getRandomValues(array);
+  return array[0] / (0xffffffff + 1);
+}
+
 function rand(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  return Math.floor(secureRandom() * (max - min + 1)) + min;
 }
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(secureRandom() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -71,7 +82,7 @@ function buildQuestion(
 
   // Ensure we have exactly 3 distractors
   while (wrongs.length < 3) {
-    const fallback = String(Number(correct) + rand(1, 20) * (Math.random() > 0.5 ? 1 : -1));
+    const fallback = String(Number(correct) + rand(1, 20) * (secureRandom() > 0.5 ? 1 : -1));
     if (fallback !== correct && !wrongs.includes(fallback)) wrongs.push(fallback);
   }
 
