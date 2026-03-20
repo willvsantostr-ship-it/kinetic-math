@@ -47,17 +47,21 @@ export const exercisesService = {
   async getBadges(userId: string): Promise<Badge[]> {
     if (!supabase) return MOCK_BADGES;
 
-    const { data: allBadges, error: badgesError } = await supabase
-      .from('badges')
-      .select('*')
-      .order('created_at', { ascending: true });
+    const [
+      { data: allBadges, error: badgesError },
+      { data: userBadges }
+    ] = await Promise.all([
+      supabase
+        .from('badges')
+        .select('*')
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('user_badges')
+        .select('badge_id')
+        .eq('user_id', userId)
+    ]);
 
     if (badgesError || !allBadges) return MOCK_BADGES;
-
-    const { data: userBadges } = await supabase
-      .from('user_badges')
-      .select('badge_id')
-      .eq('user_id', userId);
 
     const unlockedIds = new Set((userBadges ?? []).map(ub => ub.badge_id));
 
