@@ -656,7 +656,3 @@ export function getLevelName(level: number): string {
 export function getLevelDescription(level: number): string {
   return LEVEL_DESCRIPTIONS[level] || '';
 }
-
-export function getXpPerLevel(level: number): number {
-  return 10 + level * 5;
-}
