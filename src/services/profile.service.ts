@@ -16,7 +16,7 @@ const MOCK_PROFILE: Profile = {
   updated_at: new Date().toISOString(),
 };
 
-const MOCK_PROGRESS: UserProgress = {
+export const MOCK_PROGRESS: UserProgress = {
   id: 'mock-progress-001',
   user_id: 'mock-user-001',
   total_xp: 12450,
